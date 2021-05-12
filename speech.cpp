@@ -124,7 +124,9 @@ void entrypoint(void)
     //    return;
     //ShowCursor(0);
     // create window
-    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_POPUP | WS_VISIBLE, 0, 0, 800, 600, 0, 0, 0, 0));
+    int width = GetSystemMetrics(SM_CXSCREEN);
+    int height = GetSystemMetrics(SM_CYSCREEN);
+    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (width - 800) / 2, (height - 600) / 2, 800, 600, 0, 0, 0, 0));
 
     // initalize opengl
     SetPixelFormat(hDC, ChoosePixelFormat(hDC, &pfd), &pfd);
