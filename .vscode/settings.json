@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "*.fs": "glsl",
+        "*.vs": "gsls",
+        "*.cs": "glsl",
+        "*.gs": "glsl",
+        "sapi.h": "c"
+    }
+}

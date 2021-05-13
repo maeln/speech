@@ -20,8 +20,12 @@ extern "C"
 #include "glext.h"
 #include "gldefs.h"
 
+// shader
+#include "draw_shader.h"
+#include "postprocess_shader.h"
+
 const wchar_t truc[] =
-    L"bonjour monde";
+    L"Goodbye Zenika";
 
 const wchar_t window_class[] = L"static";
 
@@ -29,41 +33,19 @@ static const PIXELFORMATDESCRIPTOR pfd = {
     sizeof(PIXELFORMATDESCRIPTOR), 1, PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, PFD_TYPE_RGBA,
     32, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 32, 0, 0, PFD_MAIN_PLANE, 0, 0, 0, 0};
 
-static DEVMODE screenSettings = {{0},
-                                 0,
-                                 0,
-                                 156,
-                                 0,
-                                 0x001c0000,
-                                 {0},
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 {0},
-                                 0,
-                                 32,
-                                 1920,
-                                 1280,
-                                 {0},
-                                 0,
-#if (WINVER >= 0x0400)
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-#if (WINVER >= 0x0500) || (_WIN32_WINNT >= 0x0400)
-                                 0,
-                                 0
-#endif
-#endif
-};
-
-void entrypoint(void)
+int __stdcall WinMainCRTStartup()
 {
+    GLuint gShaderPresent;
+    GLuint gShaderPostProcess;
+    GLuint fbAccumulator;
+
+    int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
+    int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int kCanvasWidth = 800;
+    int kCanvasHeight = 600;
+    int kUniformResolution = 0;
+    int kUniformTime = 1;
+
     CoInitialize(NULL);
 
     // init voice
@@ -119,32 +101,71 @@ void entrypoint(void)
     waveOutPrepareHeader(hWaveOut, &WaveHDR, sizeof(WaveHDR));
     waveOutWrite(hWaveOut, &WaveHDR, sizeof(WaveHDR));
 
-    // Window param
-    //if (ChangeDisplaySettings(&screenSettings, CDS_FULLSCREEN) != DISP_CHANGE_SUCCESSFUL)
-    //    return;
-    //ShowCursor(0);
-    // create window
-    int width = GetSystemMetrics(SM_CXSCREEN);
-    int height = GetSystemMetrics(SM_CYSCREEN);
-    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (width - 800) / 2, (height - 600) / 2, 800, 600, 0, 0, 0, 0));
+    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (kScreenWidth - 800) / 2, (kScreenHeight - 600) / 2, kCanvasWidth, kCanvasHeight, 0, 0, 0, 0));
+    ShowCursor(false);
 
     // initalize opengl
     SetPixelFormat(hDC, ChoosePixelFormat(hDC, &pfd), &pfd);
     wglMakeCurrent(hDC, wglCreateContext(hDC));
     SwapBuffers(hDC);
 
+    // Make framebuffer
+    GLuint backing;
+    glGenFramebuffers(1, &fbAccumulator);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
+    glGenTextures(1, &backing);
+    glBindTexture(GL_TEXTURE_2D, backing);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCanvasWidth, kCanvasHeight, 0, GL_RGBA, GL_FLOAT, 0);
+
+    // don't remove these!
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, backing, 0);
+    GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
+    glDrawBuffers(1, drawBuffers);
+
+    // make shader
+    gShaderPresent = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &draw_frag);
+    gShaderPostProcess = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &postprocess_frag);
+
     // main loop : Play the WAV until finished.
     bool finished = false;
-    long t;
-    long to = timeGetTime();
+    int t;
+    int to = timeGetTime();
     do
     {
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
         t = timeGetTime() - to;
         waveOutGetPosition(hWaveOut, &MMTime, sizeof(MMTIME));
+
+        glUseProgram(gShaderPresent);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
+        glUniform4f(
+            kUniformResolution,
+            (float)kCanvasWidth,
+            (float)kCanvasHeight,
+            (float)kCanvasWidth / (float)kCanvasHeight,
+            (float)kCanvasHeight / (float)kCanvasWidth);
+        glUniform1i(kUniformTime, t);
+        glRecti(-1, -1, 1, 1);
+
+        glUseProgram(gShaderPostProcess);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glUniform4f(
+            kUniformResolution,
+            (float)kCanvasWidth,
+            (float)kCanvasHeight,
+            (float)kCanvasWidth / (float)kCanvasHeight,
+            (float)kCanvasHeight / (float)kCanvasWidth);
+        glUniform1i(kUniformTime, t);
+        glBindTexture(GL_TEXTURE_2D, fbAccumulator);
+        glRecti(-1, -1, 1, 1);
+
         SwapBuffers(hDC);
-        finished = !(MMTime.u.cb < c);
+
+        // finished = !(MMTime.u.cb < c);
     } while (!finished && !GetAsyncKeyState(VK_ESCAPE));
 
     pSpStream->Release();
@@ -152,7 +173,7 @@ void entrypoint(void)
     pVoice->Release();
 
     CoUninitialize();
-    //ChangeDisplaySettings(0, 0);
-    //ShowCursor(1);
+    ShowCursor(true);
     ExitProcess(0);
+    return 0;
 }
