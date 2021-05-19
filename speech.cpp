@@ -27,7 +27,8 @@ extern "C"
 #include "draw_shader.h"
 #include "postprocess_shader.h"
 
-bool dead = false;
+#include "audio.h"
+
 static void processMessages()
 {
     MSG msg;
@@ -36,10 +37,9 @@ static void processMessages()
         if (msg.message == WM_QUIT)
         {
             // Kill
-            dead = true;
             CoUninitialize();
             ShowCursor(true);
-            // ExitProcess(0);
+            ExitProcess(0);
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -55,20 +55,33 @@ static const PIXELFORMATDESCRIPTOR pfd = {
     sizeof(PIXELFORMATDESCRIPTOR), 1, PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, PFD_TYPE_RGBA,
     32, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 32, 0, 0, PFD_MAIN_PLANE, 0, 0, 0, 0};
 
-int __stdcall WinMainCRTStartup()
+static SAMPLE_TYPE k4SoundBuffer[MAX_SAMPLES * 2];
+
+WAVEHDR generate4klang()
 {
-    GLuint gShaderPresent;
-    GLuint gShaderPostProcess;
-    GLuint fbAccumulator;
+    WAVEHDR k4WaveHDR =
+        {
+            (LPSTR)k4SoundBuffer,
+            MAX_SAMPLES * sizeof(SAMPLE_TYPE) * 2, // MAX_SAMPLES*sizeof(float)*2(stereo)
+            0,
+            0,
+            0,
+            0,
+            0,
+            0};
+    _4klang_render(k4SoundBuffer);
+    return k4WaveHDR;
+}
 
-    int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
-    int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
-    int kCanvasWidth = 800;
-    int kCanvasHeight = 600;
-    int kUniformResolution = 0;
-    int kUniformTime = 1;
-
-    CoInitialize(NULL);
+WAVEHDR generateTTS()
+{
+    ttsWavFormat.wFormatTag = WAVE_FORMAT_PCM;
+    ttsWavFormat.nChannels = 2;
+    ttsWavFormat.wBitsPerSample = 16;
+    ttsWavFormat.nBlockAlign = ttsWavFormat.nChannels * ttsWavFormat.wBitsPerSample / 8;
+    ttsWavFormat.nSamplesPerSec = 44100;
+    ttsWavFormat.nAvgBytesPerSec = ttsWavFormat.nSamplesPerSec * ttsWavFormat.nBlockAlign;
+    ttsWavFormat.cbSize = 0;
 
     // init voice
     ISpVoice *pVoice = NULL;
@@ -88,21 +101,11 @@ int __stdcall WinMainCRTStartup()
     ISpStream *pSpStream = nullptr;
     hr = CoCreateInstance(_CLSID_SpStream, NULL, CLSCTX_ALL, _IID_ISpStream, (void **)&pSpStream);
 
-    // WAV format to use
-    WAVEFORMATEX fmt = {};
-    fmt.wFormatTag = WAVE_FORMAT_PCM;
-    fmt.nChannels = 2;
-    fmt.wBitsPerSample = 16;
-    fmt.nBlockAlign = fmt.nChannels * fmt.wBitsPerSample / 8;
-    fmt.nSamplesPerSec = 44100;
-    fmt.nAvgBytesPerSec = fmt.nSamplesPerSec * fmt.nBlockAlign;
-    fmt.cbSize = 0;
-
     GUID _SPDFID_WaveFormatEx;
     IIDFromString(L"{C31ADBAE-527F-4FF5-A230-F62BB61FF70C}", (IID *)&_SPDFID_WaveFormatEx);
 
     // Speak in the stream
-    hr = pSpStream->SetBaseStream(pStream, _SPDFID_WaveFormatEx, &fmt);
+    hr = pSpStream->SetBaseStream(pStream, _SPDFID_WaveFormatEx, &ttsWavFormat);
     hr = pVoice->SetOutput(pSpStream, TRUE);
     pVoice->Speak(truc, SPF_IS_XML, NULL);
 
@@ -116,13 +119,27 @@ int __stdcall WinMainCRTStartup()
     pStream->Read(data, stat.cbSize.LowPart, &c);
 
     // Initialize the WAV data for the copypasta
-    HWAVEOUT hWaveOut;
     WAVEHDR WaveHDR = {(LPSTR)data, c, 0, 0, 0, 0, 0, 0};
-    MMTIME MMTime = {TIME_BYTES, 0};
-
     pSpStream->Release();
     pStream->Release();
     pVoice->Release();
+    return WaveHDR;
+}
+
+int __stdcall WinMainCRTStartup()
+{
+    GLuint gShaderPresent;
+    GLuint gShaderPostProcess;
+    GLuint fbAccumulator;
+
+    int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
+    int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+    int kCanvasWidth = 800;
+    int kCanvasHeight = 600;
+    int kUniformResolution = 0;
+    int kUniformTime = 1;
+
+    CoInitialize(NULL);
 
     // window and stuff
     HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (kScreenWidth - 800) / 2, (kScreenHeight - 600) / 2, kCanvasWidth, kCanvasHeight, 0, 0, 0, 0));
@@ -153,34 +170,11 @@ int __stdcall WinMainCRTStartup()
     gShaderPresent = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &draw_frag);
     gShaderPostProcess = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &postprocess_frag);
 
-    // 4klang render
-    SAMPLE_TYPE k4SoundBuffer[MAX_SAMPLES * 2];
+    // Generate&render audio buffer for TTS and 4klang
+    WAVEHDR WaveHDR = generateTTS();
+    MMTIME MMTime = {TIME_BYTES, 0};
     HWAVEOUT k4WaveOut;
-    WAVEFORMATEX k4WaveFMT =
-        {
-#ifdef FLOAT_32BIT
-            WAVE_FORMAT_IEEE_FLOAT,
-#else
-            WAVE_FORMAT_PCM,
-#endif
-            2,                                     // channels
-            SAMPLE_RATE,                           // samples per sec
-            SAMPLE_RATE * sizeof(SAMPLE_TYPE) * 2, // bytes per sec
-            sizeof(SAMPLE_TYPE) * 2,               // block alignment;
-            sizeof(SAMPLE_TYPE) * 8,               // bits per sample
-            0                                      // extension not needed
-        };
-    WAVEHDR k4WaveHDR =
-        {
-            (LPSTR)k4SoundBuffer,
-            MAX_SAMPLES * sizeof(SAMPLE_TYPE) * 2, // MAX_SAMPLES*sizeof(float)*2(stereo)
-            0,
-            0,
-            0,
-            0,
-            0,
-            0};
-    _4klang_render(k4SoundBuffer);
+    WAVEHDR k4WaveHDR = generate4klang();
 
     // Play 4k song
     waveOutOpen(&k4WaveOut, WAVE_MAPPER, &k4WaveFMT, NULL, 0, CALLBACK_NULL);
@@ -188,9 +182,9 @@ int __stdcall WinMainCRTStartup()
     waveOutWrite(k4WaveOut, &k4WaveHDR, sizeof(k4WaveHDR));
 
     // Play the copypasta
-    waveOutOpen(&hWaveOut, WAVE_MAPPER, &fmt, NULL, 0, CALLBACK_NULL);
-    waveOutPrepareHeader(hWaveOut, &WaveHDR, sizeof(WaveHDR));
-    waveOutWrite(hWaveOut, &WaveHDR, sizeof(WaveHDR));
+    waveOutOpen(&ttsWaveOut, WAVE_MAPPER, &ttsWavFormat, NULL, 0, CALLBACK_NULL);
+    waveOutPrepareHeader(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
+    waveOutWrite(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
 
     // main loop : Play the WAV until finished.
     bool finished = false;
@@ -198,9 +192,10 @@ int __stdcall WinMainCRTStartup()
     int to = timeGetTime();
     do
     {
+        t = timeGetTime() - to;
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
-        t = timeGetTime() - to;
+
         //waveOutGetPosition(k4WaveOut, &MMTime, sizeof(MMTIME));
 
         glUseProgram(gShaderPresent);
@@ -229,7 +224,7 @@ int __stdcall WinMainCRTStartup()
         SwapBuffers(hDC);
         processMessages();
         // finished = !(MMTime.u.cb < c);
-    } while (!finished && !GetAsyncKeyState(VK_ESCAPE) && !dead);
+    } while (!finished && !GetAsyncKeyState(VK_ESCAPE));
 
     CoUninitialize();
     ShowCursor(true);
