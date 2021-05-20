@@ -26,8 +26,13 @@ extern "C"
 // shader
 #include "draw_shader.h"
 #include "postprocess_shader.h"
+#include "tex.h"
 
 #include "audio.h"
+
+#define TRES 512
+#define FIRST_GLYPH 1
+#define GLYPHS 'z'
 
 static void processMessages()
 {
@@ -126,11 +131,33 @@ WAVEHDR generateTTS()
     return WaveHDR;
 }
 
+static const char dummyText[] = "loading bitch";
+
+static const float projectionMatrix[16] = {
+    1.f, 0.f, 0.f, 0.f,
+    0.f, 800.0 / 600.0, 0.f, 0.f, // 16/9 // 1.778f
+    0.f, 0.f, -1.f, -1.f,
+    0.f, 0.f, 0.f, 1.f};
+static const float faceVerts[] = {
+    1.f, -1.f,
+    1.f, 1.f,
+    -1.f, 1.f,
+    -1.f, -1.f};
+static const float faceCoords[] = {
+    1.f, 0.f,
+    1.f, 1.f,
+    0.f, 1.f,
+    0.f, 0.f};
+
 int __stdcall WinMainCRTStartup()
 {
     GLuint gShaderPresent;
     GLuint gShaderPostProcess;
+    GLuint gShaderTex;
+
     GLuint fbAccumulator;
+    GLuint texTexte;
+    GLuint tex[2];
 
     int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
     int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
@@ -143,32 +170,62 @@ int __stdcall WinMainCRTStartup()
 
     // window and stuff
     HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (kScreenWidth - 800) / 2, (kScreenHeight - 600) / 2, kCanvasWidth, kCanvasHeight, 0, 0, 0, 0));
+    SetPixelFormat(hDC, ChoosePixelFormat(hDC, &pfd), &pfd);
     ShowCursor(false);
 
     // initalize opengl
-    SetPixelFormat(hDC, ChoosePixelFormat(hDC, &pfd), &pfd);
-    wglMakeCurrent(hDC, wglCreateContext(hDC));
+    /*
+    int attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB,
+        3,
+        WGL_CONTEXT_MINOR_VERSION_ARB,
+        1,
+        WGL_CONTEXT_FLAGS_ARB,
+        WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+        WGL_CONTEXT_PROFILE_MASK_ARB,
+        WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+    };
+    */
+
+    HGLRC tempContext = wglCreateContext(hDC);
+    wglMakeCurrent(hDC, tempContext);
+
+    //HGLRC context = wglCreateContextAttribs(hDC, nullptr, attribs);
+    //wglMakeCurrent(NULL, NULL);
+    //wglDeleteContext(tempContext);
+    //wglMakeCurrent(hDC, context);
+
+    // Font & text
+    HFONT font = CreateFont(32, // FIXME : ajuster une fois la police choisie
+                            0, 0, 0, FW_MEDIUM,
+                            FALSE, FALSE, FALSE, ANSI_CHARSET,
+                            OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
+                            ANTIALIASED_QUALITY, //PROOF_QUALITY,
+                            FF_DONTCARE | DEFAULT_PITCH,
+                            "Impact");
+    SelectObject(hDC, font);
+    unsigned int list = glGenLists(GLYPHS);
+    wglUseFontBitmaps(hDC, FIRST_GLYPH, GLYPHS, list);
+
+    glGenTextures(2, tex);
+    glBindTexture(GL_TEXTURE_2D, tex[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, kCanvasWidth, kCanvasHeight, 0, GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glClearColor(0, 0, 0, 0);
+    glViewport(0, 0, kCanvasWidth, kCanvasHeight);
+    glEnable(GL_TEXTURE_2D);
+
+    const unsigned int white = 0xffffffff;
+    glColor3ubv((const GLubyte *)&white);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glRasterPos2f(0.0 - (13.0 * 32.0 / 800.0 / 2.0), 0.0);
+    glCallLists(13, GL_BYTE, dummyText);
+    glBindTexture(GL_TEXTURE_2D, tex[1]);
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, kCanvasWidth, kCanvasHeight);
     SwapBuffers(hDC);
-
-    // Make framebuffer
-    GLuint backing;
-    glGenFramebuffers(1, &fbAccumulator);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
-    glGenTextures(1, &backing);
-    glBindTexture(GL_TEXTURE_2D, backing);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCanvasWidth, kCanvasHeight, 0, GL_RGBA, GL_FLOAT, 0);
-
-    // don't remove these!
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, backing, 0);
-    GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
-    glDrawBuffers(1, drawBuffers);
-
-    // make shader
-    gShaderPresent = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &draw_frag);
-    gShaderPostProcess = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &postprocess_frag);
 
     // Generate&render audio buffer for TTS and 4klang
     WAVEHDR WaveHDR = generateTTS();
@@ -185,6 +242,25 @@ int __stdcall WinMainCRTStartup()
     waveOutOpen(&ttsWaveOut, WAVE_MAPPER, &ttsWavFormat, NULL, 0, CALLBACK_NULL);
     waveOutPrepareHeader(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
     waveOutWrite(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
+
+    // Make framebuffer
+    glViewport(0, 0, kCanvasWidth, kScreenHeight);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glGenFramebuffers(1, &fbAccumulator);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
+    glBindTexture(GL_TEXTURE_2D, tex[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCanvasWidth, kCanvasHeight, 0, GL_RGBA, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex[0], 0);
+    GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
+    glDrawBuffers(1, drawBuffers);
+
+    // make shader
+    gShaderPresent = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &draw_frag);
+    gShaderPostProcess = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &postprocess_frag);
+    gShaderTex = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, &tex_frag);
 
     // main loop : Play the WAV until finished.
     bool finished = false;
@@ -220,6 +296,19 @@ int __stdcall WinMainCRTStartup()
         glUniform1i(kUniformTime, t);
         glBindTexture(GL_TEXTURE_2D, fbAccumulator);
         glRecti(-1, -1, 1, 1);
+
+        /*
+        glUseProgram(gShaderTex);
+        glUniform4f(
+            kUniformResolution,
+            (float)kCanvasWidth,
+            (float)kCanvasHeight,
+            (float)kCanvasWidth / (float)kCanvasHeight,
+            (float)kCanvasHeight / (float)kCanvasWidth);
+        glUniform1i(kUniformTime, t);
+        glBindTexture(GL_TEXTURE_2D, tex[1]);
+        glRecti(-1, -1, 1, 1);
+        */
 
         SwapBuffers(hDC);
         processMessages();

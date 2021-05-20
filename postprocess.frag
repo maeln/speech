@@ -55,7 +55,7 @@ vec3 aberrationColor(float f)
 }
 
 vec2 distort(vec2 uv, float i) {
-    float dx = (0.1 - fbm(vec2(uv.y*4.0, float(iTime)/4000.0), i))/2.0;
+    float dx = (0.1 - fbm(vec2(uv.y*4.0, float(iTime)/4000.0), i))/4.0;
     return vec2(uv.x + dx, uv.y);
 }
 

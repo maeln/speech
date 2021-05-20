@@ -38,7 +38,7 @@ const char *postprocess_frag =
  "}"
  "vec2 e(vec2 v,float f)"
  "{"
-   "float s=(.1-n(vec2(v.y*4.,float(i)/4000.),f))/2.;"
+   "float s=(.1-n(vec2(v.y*4.,float(i)/4000.),f))/4.;"
    "return vec2(v.x+s,v.y);"
  "}"
  "vec3 r(vec2 v)"
