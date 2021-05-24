@@ -43,3 +43,4 @@ typedef HGLRC(WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareCo
 #define glUniform3f ((PFNGLUNIFORM3FPROC)wglGetProcAddress("glUniform3f"))
 #define glUniform4f ((PFNGLUNIFORM4FPROC)wglGetProcAddress("glUniform4f"))
 #define glUseProgram ((PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram"))
+#define glActiveTexture ((PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture"))

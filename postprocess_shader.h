@@ -3,7 +3,7 @@
  */
 #ifndef POSTPROCESS_SHADER_H_
 # define POSTPROCESS_SHADER_H_
-# define VAR_FRAMEBUFFERTEX "f"
+# define VAR_ACCTEX "f"
 # define VAR_IRESOLUTION "v"
 # define VAR_ITIME "i"
 
@@ -11,7 +11,7 @@ const char *postprocess_frag =
  "#version 430\n"
  "layout(location=0)uniform vec4 v;"
  "layout(location=1)uniform int i;"
- "layout(binding=0)uniform sampler2D f;\n"
+ "uniform sampler2D f;\n"
  "#define ITER_DIST 16\n"
  "#define saturate(x)(clamp((x),0.0,1.0))\n"
  "float t(in vec2 v)"
@@ -21,9 +21,9 @@ const char *postprocess_frag =
  "float n(in vec2 v)"
  "{"
    "vec2 i=floor(v),f=fract(v);"
-   "float x=t(i),y=t(i+vec2(1.,0.)),g=t(i+vec2(0.,1.)),n=t(i+vec2(1.,1.));"
+   "float x=t(i),y=t(i+vec2(1.,0.)),n=t(i+vec2(0.,1.)),l=t(i+vec2(1.,1.));"
    "vec2 s=f*f*(3.-2.*f);"
-   "return mix(x,y,s.x)+(g-x)*s.y*(1.-s.x)+(n-y)*s.x*s.y;"
+   "return mix(x,y,s.x)+(n-x)*s.y*(1.-s.x)+(l-y)*s.x*s.y;"
  "}"
  "float n(in vec2 v,float f)"
  "{"

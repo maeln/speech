@@ -4,18 +4,18 @@
 #ifndef TEX_H_
 # define TEX_H_
 # define VAR_IRESOLUTION "i"
-# define VAR_ITIME "m"
-# define VAR_TEXSAMPLER "l"
+# define VAR_ITIME "v"
+# define VAR_SDFTEX "l"
 
 const char *tex_frag =
  "#version 430\n"
  "layout(location=0)uniform vec4 i;"
- "layout(location=1)uniform int m;"
- "layout(binding=0)uniform sampler2D l;"
+ "layout(location=1)uniform int v;"
+ "uniform sampler2D l;"
  "void main()"
  "{"
-   "vec4 m=texture(l,gl_FragCoord.xy/i.xy);"
-   "gl_FragColor=m;"
+   "vec4 i=texelFetch(l,ivec2(gl_FragCoord.xy),0);"
+   "gl_FragColor=i;"
  "}";
 
 #endif // TEX_H_

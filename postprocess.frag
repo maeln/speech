@@ -2,7 +2,7 @@
 #version 430
 layout(location = 0) uniform vec4 iResolution;
 layout(location = 1) uniform int iTime;
-layout(binding = 0) uniform sampler2D frameBufferTex;
+uniform sampler2D accTex;
 
 #define ITER_DIST 16
 #define saturate(x) (clamp((x), 0.0, 1.0))
@@ -69,7 +69,7 @@ vec3 standard_excess_like_aberation(vec2 uv) {
 	    vec3 weight = aberrationColor(t);
         sum_weight += weight;
         sum_color += weight 
-            * texture(frameBufferTex, distort(uv, 0.1+(float(i)/float(ITER_DIST))/32.0)).rgb;
+            * texture(accTex, distort(uv, 0.1+(float(i)/float(ITER_DIST))/32.0)).rgb;
         t += step_size;
     }
 
@@ -81,7 +81,7 @@ void main()
 {
 	// readback the buffer
 	vec3 abberation = standard_excess_like_aberation(gl_FragCoord.xy/iResolution.xy);
-    vec3 tex = texture(frameBufferTex, gl_FragCoord.xy/iResolution.xy).rgb;
+    vec3 tex = texture(accTex, gl_FragCoord.xy/iResolution.xy).rgb;
 
 	// divide accumulated color by the sample count
     float x = float(iTime)/1000.0;
