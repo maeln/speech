@@ -5,9 +5,16 @@ layout(location = 1) uniform int iTime;
 
 #define PI 3.1415
 #define MAXSTEPS 128
-#define MINDIST  0.0005
+#define MINDIST  0.0001
 #define MAXDIST  20.0
 #define saturate(x) (clamp(0.0, 1.0, x))
+#define f1(x) (clamp(x, 0.0, 1.0))
+#define rep(p, r) (mod(p - r*.5, r) - r*.5)
+
+vec3 hi = vec3(0.0, 0.0, 0.0)/255.0;
+vec3 lo = vec3(0.0, 0.0, 0.0)/255.0;
+
+float sec = float(iTime) / 1000.0;
 
 struct pLight {
     vec3 position;
@@ -16,99 +23,50 @@ struct pLight {
     vec3 specular;
 };
 
-float sec = float(iTime)/1000.0;
-
 float random (in vec2 st) {
     return fract(sin(dot(st.xy,
                          vec2(12.9898,78.233)))*
         43758.5453123);
 }
 
-float sphere(vec3 p, float s)
+mat4 rotationMatrix(vec3 axis, float angle)
+{
+    axis = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0 - c;
+    
+    return mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                0.0,                                0.0,                                0.0,                                1.0);
+}
+
+float opSmoothUnion( float d1, float d2, float k ) {
+    float h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );
+    return mix( d2, d1, h ) - k*h*(1.0-h); 
+}
+    
+float sdBoxFrame( vec3 p, vec3 b, float e )
+{
+  p = abs(p  )-b;
+  vec3 q = abs(p+e)-e;
+  return min(min(
+      length(max(vec3(p.x,q.y,q.z),0.0))+min(max(p.x,max(q.y,q.z)),0.0),
+      length(max(vec3(q.x,p.y,q.z),0.0))+min(max(q.x,max(p.y,q.z)),0.0)),
+      length(max(vec3(q.x,q.y,p.z),0.0))+min(max(q.x,max(q.y,p.z)),0.0));
+}
+
+float sdSphere(vec3 p, float s)
 {
     return length(p) - s;
 }
 
-// Compute the position of particle {i} at the time {iTime}.
-vec3 calcPos(int i) {
-    float period = 5.0;
-    float mTime = sec+(float(i)*0.2);
-    
-    // we change the direction of the particle every {period} seconds.
-    float dv = floor(mTime/period+1.0);
-    
-    float dx = 0.5-random(vec2(i,i)*dv);
-    float dy = 0.5-random(vec2(i-1,i+1)*dv);
-    float dz = 0.5-random(vec2(i+1,i-1)*dv);
-    
-    vec3 dir = vec3(dx, dy, dz);
-    
-    // We multiply direction {dir} by the {iTime} modulo {period} so that we reset the particle position every {period} seconds 
-    return dir * (mod(mTime,period)) * 2.0;
-}
-
-// Draw all the particles
-vec2 scene(vec3 ray)
+float sdCapsule( vec3 p, vec3 a, vec3 b, float r )
 {
-    float de = MAXDIST;
-    float m = 0.0;
-    for(int i=0; i<100; ++i) {
-        // if we just want the distance 
-        // de = min(sphere(ray-calcPos(i), 0.1), de);
-        
-        // So that we can return the "material id"
-        // probably slower, but we can color each particle differently !
-        float di = sphere(ray-calcPos(i), 0.1);
-        if(di < de) {
-            de = di;
-            m = float(i);
-        }
-    }
-    
-    return vec2(de, m);
-}
-
-vec3 normal(vec3 pos) {
-    vec2 eps = vec2(0.0, MINDIST);
-	return normalize(vec3(
-    scene(pos + eps.yxx).x - scene(pos - eps.yxx).x,
-    scene(pos + eps.xyx).x - scene(pos - eps.xyx).x,
-    scene(pos + eps.xxy).x - scene(pos - eps.xxy).x));
-}
-
-vec2 raymarch(vec3 from, vec3 direction)
-{
-    float t = 1.0*MINDIST;
-    int i = 0;
-    float obj = -1.0;
-    for(int steps=0; steps<MAXSTEPS; ++steps)
-    {
-        ++i;
-        vec2 dist = scene(from + t * direction);
-        if(dist.x < MINDIST || t >= MAXDIST) break;
-        t += dist.x;
-        obj = dist.y;
-    }
-    
-    return vec2(t, t > MAXDIST ? -1.0 : obj);
-}
-
-vec3 material(vec2 c, vec3 hit, vec3 sky) {
-    vec3 color = sky;
-    float r = random(vec2(c.y,c.y));
-    float g = random(vec2(c.y-1.0,c.y+1.0));
-    float b = random(vec2(c.y+1.0,c.y-1.0));
-    return vec3(r,g,b);
-}
-
-vec3 phong(vec3 hit, vec3 eye, vec3 N, pLight light, float ks) {
-    vec3 L = normalize(light.position - hit);
-    vec3 V = normalize(eye - hit);
-    vec3 R = reflect(L, N);
-    vec3 ambiant = light.ambiant;
-    vec3 diffuse = max(dot(L,N), 0.0)*light.diffuse;
-    vec3 specular = pow(max(dot(R,V), 0.0), ks)*light.specular;
-    return ambiant + 0.5*(diffuse+specular);
+  vec3 pa = p - a, ba = b - a;
+  float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+  return length( pa - ba*h ) - r;
 }
 
 float sdCircle(vec2 p, float r)
@@ -124,18 +82,140 @@ float sdArc( in vec2 p, in vec2 sca, in vec2 scb, in float ra, in float rb )
     return sqrt(max(0.0, dot(p,p) + ra*ra - 2.0*ra*k)) - rb;
 }
 
+// Compute the position of particle {i} at the time {sec}.
+vec3 calcPos(int i) {
+    float fi = float(i);
+    float dx = sin((fi/4.0)+sec) + mix(2.0, 0.0, f1(sec-4.0));
+    float dy = sin(2.0*PI*(fi/10.0) + sec) - mix(0.0, sin(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-20.0));
+    float dz = cos(2.0*PI*(fi/10.0) + sec) - mix(0.0, cos(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-20.0));
+    
+    vec3 dir = vec3(dx, dy, dz);
+    vec3 p = dir;
+    
+    return p;
+}
+
+float sdTriangle(vec3 ray) {
+    vec3 p1 = vec3(0.0);
+    vec3 p2 = vec3(0.0, 0.0, 1.0);
+    vec3 p3 = vec3(0.0, sqrt(1.0), 0.5);
+    return min(min(sdCapsule(ray, p1, p2, 0.01), sdCapsule(ray, p2, p3, 0.01)), sdCapsule(ray, p3, p1, 0.01));
+}
+
+
+vec2 enter(vec3 ray) {
+    float mi = 0.0;
+    float de = MAXDIST;
+    for(int i=1; i<50; ++i) {
+        float fi = float(i);
+        float zr = 2. - random(vec2(fi, 5.0)) * 4.0;
+        float yr = 2. - random(vec2(fi, 2.0)) * 4.0;
+        float xr = -10.0 + mix((fi/50.0*10.0), 0.0, saturate(sec/20.0)) + mod(sec*2.0+(random(vec2(fi, 1.0))*20.0), 20.0);
+        vec3 q = ray - vec3(xr, yr, zr);
+        float rx = 2. - random(vec2(fi, 5.0)) * 4.0;
+        q = (rotationMatrix(vec3(rx, yr, zr), sec) * vec4(q, 1.0)).xyz;
+        float di = sdTriangle(q);
+        if(de > di) {
+            de = di;
+            mi = fi;
+        }
+    }
+    return vec2(de, mi);
+}
+
+vec2 dancingSphere(vec3 ray) {
+    float mi = 0.0;
+    float de = MAXDIST;
+    for(int i=0; i<10; ++i) {
+        float di = sdSphere(ray-calcPos(i), 0.1);
+        if(de > di) {
+            de = di;
+            mi = float(i)+1.0;
+        }
+    }
+    
+    return vec2(de, mi);
+}
+
+float middleBox(vec3 ray) {
+    float zr = 2. - random(vec2(7.0, 5.0)) * 4.0;
+    float yr = 2. - random(vec2(2.0, 2.0)) * 4.0;
+    float rx = 2. - random(vec2(16.0, 5.0)) * 4.0;
+    vec3 q = ray;
+    q = (rotationMatrix(vec3(rx, yr, zr), sec) * vec4(ray, 1.0)).xyz;
+    return sdBoxFrame(q, vec3(0.2, 0.2, 0.2) * vec3(f1(sec/1.5 - 29.0/1.5)), 0.025);
+}
+
+// Draw all the particles
+vec3 scene(vec3 ray)
+{
+    vec2 init = enter(ray);
+    vec2 spheres = dancingSphere(ray);
+    float cube = middleBox(ray);
+    
+    float rde = opSmoothUnion(spheres.x, cube, 0.1);
+    
+    float kmi = init.y;
+    float kde = init.x;
+    float koi = 0.0;
+    
+    if(spheres.x < init.x) {
+        kmi = spheres.y;
+        kde = spheres.x;
+        koi = 1.0;
+    }
+    
+    if(sec > 25.0 && cube < kde) {
+        kde = cube;
+        koi = 1.0;
+    }
+    
+    
+    return vec3(kde, kmi, koi);
+}
+
+vec3 normal(vec3 pos) {
+    vec2 eps = vec2(0.0, MINDIST);
+	return normalize(vec3(
+    scene(pos + eps.yxx).x - scene(pos - eps.yxx).x,
+    scene(pos + eps.xyx).x - scene(pos - eps.xyx).x,
+    scene(pos + eps.xxy).x - scene(pos - eps.xxy).x));
+}
+
+vec4 raymarch(vec3 from, vec3 direction)
+{
+    float t = 1.0*MINDIST;
+    int i = 0;
+    vec3 march = vec3(MAXDIST, -1.0, -1.0);
+    for(int steps=0; steps<MAXSTEPS; ++steps)
+    {
+        ++i;
+        march = scene(from + t * direction);
+        if(march.x < MINDIST || t >= MAXDIST) break;
+        t += march.x;
+    }
+    return vec4(t, t > MAXDIST ? -1.0 : march.y, march.z, float(i));
+}
+
+vec3 phong(vec3 hit, vec3 eye, vec3 N, pLight light, float ks) {
+    vec3 L = normalize(light.position - hit);
+    vec3 V = normalize(eye - hit);
+    vec3 R = reflect(L, N);
+    vec3 ambiant = light.ambiant;
+    vec3 diffuse = max(dot(L,N), 0.0)*light.diffuse;
+    vec3 specular = pow(max(dot(R,V), 0.0), ks)*light.specular;
+    return ambiant + 0.5*(diffuse+specular);
+}
+
 void main()
 {
-    pLight l1 = pLight(vec3(sec-3.0, 2.0*sin(sec), cos(sec)*3.0),
-                       vec3(0.8), vec3(1.0, 0.0, 0.0), vec3(0.8, 0.0, 0.0));
+    pLight l1 = pLight(vec3(sin(sec/3.0), sin(sec/4.0), cos(sec/6.0)),
+                       vec3(0.0), vec3(0.0), vec3(1.8));
     
-    vec2 uv = (-iResolution.xy + 2.0*gl_FragCoord.xy)/iResolution.y;
-    
-    vec2 uv2 = gl_FragCoord.xy / iResolution.xy;
-    int tx = int(uv2.x*512.0);
+    vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy)/iResolution.y;
     
     vec3 target  = vec3(0.0, 0.0, 0.0);
-	vec3 eye     = vec3(2.0, 2.0, 2.0);
+	vec3 eye     = vec3(2.0, 0.0, 0.0);
     vec3 up      = vec3(0.0, 1.0, 0.0);
     
     vec3 eyeDir   = normalize(target - eye);
@@ -143,33 +223,31 @@ void main()
     vec3 eyeUp    = normalize(cross(eye, eyeRight));
     
     vec3 rayDir = normalize(eyeRight * uv.x + eyeUp * uv.y + eyeDir);
+       
+    vec3 skyCol = mix(lo, hi, gl_FragCoord.y/iResolution.y);
+    vec3 color = skyCol;
     
-    vec3 hi = vec3(255.0, 122.0, 122.0)/255.0;
-    vec3 lo = vec3(134.0, 22.0, 87.0)/255.0;
-    vec3 color = mix(lo, hi, gl_FragCoord.y/iResolution.y);
-    vec3 sky = color;
-    vec2 c = raymarch(eye, rayDir);
-    vec3 hit = eye+c.x*rayDir;
-    vec3 norm = normal(hit);
-    
-    if(c.y>0.0) {
-        color = material(c, hit, color);
-        color = color * phong(hit, eye, norm, l1, 2.0);
+    vec4 march = raymarch(eye, rayDir);
+    color = vec3(0.3, 0.0, 1.0) * march.w / float(MAXSTEPS) * 4.0;
+    if(march.y>0.0) {
+        color = vec3(1.0);
+        if(march.z>0.0) {
+            vec3 hit = eye+march.x*rayDir;
+            vec3 norm = normal(hit);
+            color *= phong(hit, eye, norm, l1, 16.0);
+        }
     }
-
+    
+    
     // LOGO
-    float r = iResolution.x/iResolution.y;
-    vec2 q = uv;
-    q += vec2(0.7*r, 0.7);
-
     // left-down circle
-    float d = sdCircle(q, 0.1);
+    float d = sdCircle(uv + vec2(0.5, 0.5), 0.1);
     color = mix(color, vec3(1.0), smoothstep(3.0/iResolution.y, 0.0, d));
     
     // left down arc
-    float ta = PI/2.0 * sec*2.0;// 3.14*(0.5+0.5*cos(iTime*0.52+2.0));
-    float tb = PI/4.0 * (1.0-sin(sec)/2.0); //3.14*(0.5+0.5*cos(iTime*0.31+2.0));
-    d = sdArc(q,vec2(sin(ta),cos(ta)),vec2(sin(tb),cos(tb)), 0.2, 0.02);
+    float ta = PI/2.0 * sec*2.0;// 3.14*(0.5+0.5*cos(sec*0.52+2.0));
+    float tb = PI/4.0 * (1.0-sin(sec)/2.0); //3.14*(0.5+0.5*cos(sec*0.31+2.0));
+    d = sdArc(uv + vec2(0.5, 0.5),vec2(sin(ta),cos(ta)),vec2(sin(tb),cos(tb)), 0.2, 0.02);
     color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
 
 	gl_FragColor = vec4(color, 1.0);

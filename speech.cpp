@@ -148,14 +148,14 @@ int __stdcall WinMainCRTStartup()
     int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
     int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
     int kCanvasWidth = 800;
-    int kCanvasHeight = 600;
+    int kCanvasHeight = 800;
     int kUniformResolution = 0;
     int kUniformTime = 1;
 
     CoInitialize(NULL);
 
     // window and stuff
-    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (kScreenWidth - 800) / 2, (kScreenHeight - 600) / 2, kCanvasWidth, kCanvasHeight, 0, 0, 0, 0));
+    HDC hDC = GetDC(CreateWindow((LPCSTR)0xC018, 0, WS_VISIBLE | WS_POPUP, (kScreenWidth - kCanvasWidth) / 2, (kScreenHeight - kCanvasHeight) / 2, kCanvasWidth, kCanvasHeight, 0, 0, 0, 0));
     SetPixelFormat(hDC, ChoosePixelFormat(hDC, &pfd), &pfd);
     ShowCursor(false);
 
