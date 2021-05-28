@@ -134,29 +134,6 @@ WAVEHDR generateTTS()
 
 static const char dummyText[] = "abcdefghijklmnopqrstuvwxyz1234567890,.<>?!/";
 
-static const float projectionMatrix[16] = {
-    1.f, 0.f, 0.f, 0.f,
-    0.f, 800.0 / 600.0, 0.f, 0.f,
-    0.f, 0.f, -1.f, -1.f,
-    0.f, 0.f, 0.f, 1.f};
-static const float faceVerts[] = {
-    1.f, -1.f,
-    1.f, 1.f,
-    -1.f, 1.f,
-    -1.f, -1.f};
-static const float faceCoords[] = {
-    1.f, 0.f,
-    1.f, 1.f,
-    0.f, 1.f,
-    0.f, 0.f};
-
-void glPrint(const char *text, GLsizei len)
-{
-    glPushAttrib(GL_LIST_BIT);
-    glCallLists(len, GL_UNSIGNED_BYTE, text); // Draws The Display List Text ( NEW )
-    glPopAttrib();
-}
-
 int __stdcall WinMainCRTStartup()
 {
     GLuint gShaderPresent;
@@ -165,7 +142,6 @@ int __stdcall WinMainCRTStartup()
 
     GLuint fbAccumulator;
     GLuint fbTextSDF;
-    GLuint texTexte;
     GLuint accumulatorTex;
     GLuint sdfTex;
 
@@ -260,8 +236,6 @@ int __stdcall WinMainCRTStartup()
     glColor3ubv((const GLubyte *)&white);
     glClear(GL_COLOR_BUFFER_BIT);
     glBindTexture(GL_TEXTURE_2D, 0);
-    //glRasterPos2f(0.0 - (13.0 * 32.0 / 800.0 / 2.0), 0.0);
-    //glPrint(dummyText, 13);
 
     float unitX32 = 32.0 / kCanvasWidth * 2.0;
     float unitY32 = 32.0 / kCanvasHeight;
@@ -273,8 +247,6 @@ int __stdcall WinMainCRTStartup()
         float xPos = (float)(i % 15);
         float yPos = (float)(i / 15);
         glRasterPos2f(-1.0 + unitX32 * (i % maxUnitWidth), -1.0 + (FONT_BOTTOM_COMPENSATION) + unitY32 * (i / maxUnitWidth));
-        //glTranslatef((float)i * 32, 0.0, 0.0);
-        //glRasterPos2f(i * 32 % 10, i / 10);
         glCallLists(1, GL_UNSIGNED_BYTE, &dummyText[i]);
         glPopMatrix();
     }
@@ -321,11 +293,11 @@ int __stdcall WinMainCRTStartup()
     do
     {
         t = timeGetTime() - to;
-        glClear(GL_COLOR_BUFFER_BIT);
 
         //waveOutGetPosition(k4WaveOut, &MMTime, sizeof(MMTIME));
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
+        glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(gShaderPresent);
         glUniform4f(
@@ -350,7 +322,42 @@ int __stdcall WinMainCRTStartup()
         glBindTexture(GL_TEXTURE_2D, sdfTex);
         glRecti(-1, -1, 1, 1);
 
+        glBindFramebuffer(GL_FRAMEBUFFER, fbTextSDF);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glColor3ubv((const GLubyte *)&white);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        for (int i = 0; i < 11; ++i)
+        {
+            glPushAttrib(GL_LIST_BIT);
+            glListBase(0);
+            glPushMatrix();
+            float xPos = (float)(i % 15);
+            float yPos = (float)(i / 15);
+            glRasterPos2f(-1.0 + unitX32 * (i % maxUnitWidth), -1.0 + (FONT_BOTTOM_COMPENSATION) + unitY32 * (i / maxUnitWidth));
+            glCallLists(1, GL_UNSIGNED_BYTE, &dummyText[i]);
+            glPopMatrix();
+            glPopAttrib();
+        }
+
+        glBindTexture(GL_TEXTURE_2D, sdfTex);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, kCanvasWidth, kCanvasHeight);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(gShaderTex);
+        glUniform4f(
+            0,
+            (float)kCanvasWidth,
+            (float)kCanvasHeight,
+            (float)kCanvasWidth / (float)kCanvasHeight,
+            (float)kCanvasHeight / (float)kCanvasWidth);
+        glUniform1i(kTextSampler, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sdfTex);
+        glRecti(-1, -1, 1, 1);
 
         glUseProgram(gShaderPostProcess);
         glUniform4f(

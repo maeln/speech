@@ -1,0 +1,1 @@
+cl -nologo -Gm- -GR- -EHa- -Oi -GS- -Gs99999999 text.cpp -link -stack:0x5000000,0x5000000 -subsystem:windows -nodefaultlib "kernel32.lib" "ole32.lib" "winmm.lib" "user32.lib" "gdi32.lib" "opengl32.lib" "glu32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib"

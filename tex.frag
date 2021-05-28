@@ -8,5 +8,6 @@ void main()
 {
 	//vec4 tex = texture(texSampler, gl_FragCoord.xy/iResolution.xy);
 	vec4 tex = texelFetch(sdfTex, ivec2(gl_FragCoord.xy), 0);
+	tex.rgb = vec3(1.0,1.0,1.0);
 	gl_FragColor = tex;
 }

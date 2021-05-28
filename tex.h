@@ -14,8 +14,9 @@ const char *tex_frag =
  "uniform sampler2D l;"
  "void main()"
  "{"
-   "vec4 i=texelFetch(l,ivec2(gl_FragCoord.xy),0);"
-   "gl_FragColor=i;"
+   "vec4 v=texelFetch(l,ivec2(gl_FragCoord.xy),0);"
+   "v.xyz=vec3(1.,1.,1.);"
+   "gl_FragColor=v;"
  "}";
 
 #endif // TEX_H_
