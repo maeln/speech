@@ -6,6 +6,7 @@
 
 WAVEFORMATEX ttsWavFormat = {};
 HWAVEOUT ttsWaveOut;
+int ttsBytes[4];
 
 WAVEFORMATEX k4WaveFMT =
     {

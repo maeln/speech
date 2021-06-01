@@ -32,8 +32,9 @@ extern "C"
 
 //#define TRES 512
 #define FIRST_GLYPH 1
-#define GLYPHS 'z'
+#define GLYPHS 126
 #define FONT_BOTTOM_COMPENSATION 0.005
+#define FONT_SIZE 40
 
 static void processMessages()
 {
@@ -52,8 +53,27 @@ static void processMessages()
     }
 }
 
-const wchar_t truc[] =
-    L"<voice required=\"Language=409\">What the fuck did you just fucking say about me, you little bitch? I'll have you know I graduated top of my class in the Navy Seals, and I've been involved in numerous secret raids on Al-Quaeda, and I have over 300 confirmed kills. I am trained in gorilla warfare and I'm the top sniper in the entire US armed forces. You are nothing to me but just another target. I will wipe you the fuck out with precision the likes of which has never been seen before on this Earth, mark my fucking words. You think you can get away with saying that shit to me over the Internet? Think again, fucker. As we speak I am contacting my secret network of spies across the USA and your IP is being traced right now so you better prepare for the storm, maggot. The storm that wipes out the pathetic little thing you call your life. You're fucking dead, kid. I can be anywhere, anytime, and I can kill you in over seven hundred ways, and that's just with my bare hands. Not only am I extensively trained in unarmed combat, but I have access to the entire arsenal of the United States Marine Corps and I will use it to its full extent to wipe your miserable ass off the face of the continent, you little shit. If only you could have known what unholy retribution your little clever comment was about to bring down upon you, maybe you would have held your fucking tongue. But you couldn't, you didn't, and now you're paying the price, you goddamn idiot. I will shit fury all over you and you will drown in it. You're fucking dead, kiddo.</voice>";
+const wchar_t loading_text[] = L"Generating a bunch of stuff ... Give it a few seconds";
+const int loading_text_len = 54;
+
+const wchar_t voice_start[] = L"<voice required=\"Language=409\">";
+const wchar_t voice_end[] = L"</voice>";
+
+const wchar_t msg1[] =
+    L"Farewell Zenika !";
+const int msg_1_len = 17;
+
+const wchar_t msg2[] =
+    L"Thanks to all of you!";
+const int msg_2_len = 21;
+
+const wchar_t msg3[] =
+    L"And special thanks to the Nantes Team";
+const int msg_3_len = 37;
+
+const wchar_t msg4[] =
+    L"So long and thanks for all the fish!";
+const int msg_4_len = 36;
 
 const wchar_t window_class[] = L"static";
 
@@ -62,6 +82,49 @@ static const PIXELFORMATDESCRIPTOR pfd = {
     32, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 32, 0, 0, PFD_MAIN_PLANE, 0, 0, 0, 0};
 
 static SAMPLE_TYPE k4SoundBuffer[MAX_SAMPLES * 2];
+static wchar_t textBuffer[256];
+
+void text_2_tts_eng(const wchar_t msg[], int len)
+{
+    int n = 0;
+    for (int i = 0; i < 32; ++i)
+    {
+        textBuffer[n] = voice_start[i];
+        n++;
+    }
+    n--;
+
+    for (int i = 0; i < len; ++i)
+    {
+        textBuffer[n] = msg[i];
+        n++;
+    }
+    n--;
+
+    for (int i = 0; i < 9; ++i)
+    {
+        textBuffer[n] = voice_end[i];
+        n++;
+    }
+    n--;
+
+    textBuffer[n] = '\0';
+}
+
+float pow(float x, int i)
+{
+    float p = x;
+    for (int n = 1; n < i; ++n)
+    {
+        p *= p;
+    }
+    return p;
+}
+
+float easeInOutQuint(float x)
+{
+    return x < 0.5 ? 16 * x * x * x * x * x : 1 - pow(-2 * x + 2, 5) / 2;
+}
 
 WAVEHDR generate4klang()
 {
@@ -79,7 +142,7 @@ WAVEHDR generate4klang()
     return k4WaveHDR;
 }
 
-WAVEHDR generateTTS()
+WAVEHDR generateTTS(const wchar_t msg[], int msg_len, int id)
 {
     ttsWavFormat.wFormatTag = WAVE_FORMAT_PCM;
     ttsWavFormat.nChannels = 2;
@@ -113,7 +176,8 @@ WAVEHDR generateTTS()
     // Speak in the stream
     hr = pSpStream->SetBaseStream(pStream, _SPDFID_WaveFormatEx, &ttsWavFormat);
     hr = pVoice->SetOutput(pSpStream, TRUE);
-    pVoice->Speak(truc, SPF_IS_XML, NULL);
+    text_2_tts_eng(msg, msg_len);
+    pVoice->Speak(textBuffer, SPF_IS_XML, NULL);
 
     // Dump stream in a buffer
     STATSTG stat;
@@ -123,6 +187,7 @@ WAVEHDR generateTTS()
     pStream->Seek(li, SEEK_SET, NULL);
     unsigned long c = 0;
     pStream->Read(data, stat.cbSize.LowPart, &c);
+    ttsBytes[id] = c;
 
     // Initialize the WAV data for the copypasta
     WAVEHDR WaveHDR = {(LPSTR)data, c, 0, 0, 0, 0, 0, 0};
@@ -132,7 +197,65 @@ WAVEHDR generateTTS()
     return WaveHDR;
 }
 
-static const char dummyText[] = "abcdefghijklmnopqrstuvwxyz1234567890,.<>?!/";
+const float time_ease = 1000;
+const float midX = 0.0;
+const float initX = -2.0;
+const float endX = 1.1;
+float mix(float x, float y, float a)
+{
+    return x * (1.0 - a) + y * a;
+}
+
+float calcXPos(float currTime, float breakTime, int id)
+{
+    float funit = FONT_SIZE / 800.0;
+    if (breakTime == 0)
+    {
+        float r = currTime / time_ease;
+        r = r > 1.0 ? 1.0 : r;
+        float ease = easeInOutQuint(r);
+        float target = midX;
+        switch (id)
+        {
+        case 0:
+            target -= (msg_1_len * funit) / 2.0;
+            break;
+        case 1:
+            target -= (msg_2_len * funit) / 2.0;
+            break;
+        case 2:
+            target -= (msg_3_len * funit) / 2.0;
+            break;
+        default:
+            target -= (msg_4_len * funit) / 2.0;
+            break;
+        }
+        return mix(initX, target, ease);
+    }
+    else
+    {
+        float r = breakTime / 500.0;
+        r = r > 1.0 ? 1.0 : r;
+        float ease = easeInOutQuint(r);
+        float origin = midX;
+        switch (id)
+        {
+        case 0:
+            origin -= (msg_1_len * funit) / 2.0;
+            break;
+        case 1:
+            origin -= (msg_2_len * funit) / 2.0;
+            break;
+        case 2:
+            origin -= (msg_3_len * funit) / 2.0;
+            break;
+        default:
+            origin -= (msg_4_len * funit) / 2.0;
+            break;
+        }
+        return mix(origin, endX, ease);
+    }
+}
 
 int __stdcall WinMainCRTStartup()
 {
@@ -148,7 +271,7 @@ int __stdcall WinMainCRTStartup()
     int kScreenWidth = (SetProcessDPIAware(), GetSystemMetrics(SM_CXSCREEN));
     int kScreenHeight = GetSystemMetrics(SM_CYSCREEN);
     int kCanvasWidth = 800;
-    int kCanvasHeight = 800;
+    int kCanvasHeight = 600;
     int kUniformResolution = 0;
     int kUniformTime = 1;
 
@@ -220,7 +343,7 @@ int __stdcall WinMainCRTStartup()
     glDrawBuffers(1, sdfDrawBuffers);
 
     // Font & text
-    HFONT font = CreateFont(32, // FIXME : ajuster une fois la police choisie
+    HFONT font = CreateFont(FONT_SIZE, // FIXME : ajuster une fois la police choisie
                             0, 0, 0, FW_MEDIUM,
                             FALSE, FALSE, FALSE, ANSI_CHARSET,
                             OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -237,19 +360,24 @@ int __stdcall WinMainCRTStartup()
     glClear(GL_COLOR_BUFFER_BIT);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    glRasterPos2f(-0.9, -0.2);
+    glCallLists(54 * 2, GL_UNSIGNED_BYTE, loading_text);
+
     float unitX32 = 32.0 / kCanvasWidth * 2.0;
     float unitY32 = 32.0 / kCanvasHeight;
     int maxUnitWidth = kCanvasWidth / 32.0;
 
-    for (int i = 0; i < 43; ++i)
+    /*
+    for (int i = 0; i < 128; ++i)
     {
         glPushMatrix();
         float xPos = (float)(i % 15);
         float yPos = (float)(i / 15);
         glRasterPos2f(-1.0 + unitX32 * (i % maxUnitWidth), -1.0 + (FONT_BOTTOM_COMPENSATION) + unitY32 * (i / maxUnitWidth));
-        glCallLists(1, GL_UNSIGNED_BYTE, &dummyText[i]);
+        glCallLists(1, GL_UNSIGNED_BYTE, &textBuffer[i]);
         glPopMatrix();
     }
+    */
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -269,33 +397,96 @@ int __stdcall WinMainCRTStartup()
     SwapBuffers(hDC);
 
     // Generate & render audio buffer for TTS and 4klang
-    WAVEHDR WaveHDR = generateTTS();
+    int now_playing = 0;
+    WAVEHDR tts_msgs[4];
+    tts_msgs[0] = generateTTS(msg1, msg_1_len, 0);
+    tts_msgs[1] = generateTTS(msg2, msg_2_len, 1);
+    tts_msgs[2] = generateTTS(msg3, msg_3_len, 2);
+    tts_msgs[3] = generateTTS(msg4, msg_4_len, 3);
     MMTIME MMTime = {TIME_BYTES, 0};
-    HWAVEOUT k4WaveOut;
+
     WAVEHDR k4WaveHDR = generate4klang();
+    HWAVEOUT k4WaveOut;
 
     // prepare 4k song
     waveOutOpen(&k4WaveOut, WAVE_MAPPER, &k4WaveFMT, NULL, 0, CALLBACK_NULL);
     waveOutPrepareHeader(k4WaveOut, &k4WaveHDR, sizeof(k4WaveHDR));
 
-    // prepare TTS
-    waveOutOpen(&ttsWaveOut, WAVE_MAPPER, &ttsWavFormat, NULL, 0, CALLBACK_NULL);
-    waveOutPrepareHeader(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
-
-    // play sounds
-    waveOutWrite(ttsWaveOut, &WaveHDR, sizeof(WaveHDR));
+    // play song
     waveOutWrite(k4WaveOut, &k4WaveHDR, sizeof(k4WaveHDR));
 
     // main loop : Play the WAV until finished.
-    bool finished = false;
+    bool playing = false;
     int t;
     int to = timeGetTime();
+    int break_time = 0;
+    int dt = 0;
+    int animationTimer = 0;
+    int ttsDelay = 0;
+    bool rstDelay = false;
     do
     {
+        int start = timeGetTime();
         t = timeGetTime() - to;
+        animationTimer += dt;
+        ttsDelay += dt;
 
-        //waveOutGetPosition(k4WaveOut, &MMTime, sizeof(MMTIME));
+        if (ttsDelay > 500 && !playing)
+        {
+            waveOutOpen(&ttsWaveOut, WAVE_MAPPER, &ttsWavFormat, NULL, 0, CALLBACK_NULL);
+            waveOutPrepareHeader(ttsWaveOut, &tts_msgs[now_playing], sizeof(tts_msgs[now_playing]));
+            waveOutWrite(ttsWaveOut, &tts_msgs[now_playing], sizeof(tts_msgs[now_playing]));
+            playing = true;
+            rstDelay = true;
+        }
 
+        waveOutGetPosition(ttsWaveOut, &MMTime, sizeof(MMTIME));
+        if (now_playing < 4 && MMTime.u.cb >= ttsBytes[now_playing])
+        {
+            if (break_time > 1000)
+            {
+                if (rstDelay)
+                {
+                    playing = false;
+                    break_time = 0;
+                    animationTimer = 0;
+                    now_playing++;
+
+                    ttsDelay = 0;
+                    rstDelay = false;
+                }
+            }
+            else
+            {
+                break_time += dt;
+            }
+        }
+
+        // Draw the text
+        glBindFramebuffer(GL_FRAMEBUFFER, fbTextSDF);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glColor3ubv((const GLubyte *)&white);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glRasterPos2f(calcXPos(animationTimer, break_time, now_playing), -0.47);
+        if (now_playing == 0)
+        {
+            glCallLists(msg_1_len * 2, GL_UNSIGNED_BYTE, msg1);
+        }
+        else if (now_playing == 1)
+        {
+            glCallLists(msg_2_len * 2, GL_UNSIGNED_BYTE, msg2);
+        }
+        else if (now_playing == 2)
+        {
+            glCallLists(msg_3_len * 2, GL_UNSIGNED_BYTE, msg3);
+        }
+        else if (now_playing == 3)
+        {
+            glCallLists(msg_4_len * 2, GL_UNSIGNED_BYTE, msg4);
+        }
+
+        // Draw the main scene
         glBindFramebuffer(GL_FRAMEBUFFER, fbAccumulator);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -309,6 +500,7 @@ int __stdcall WinMainCRTStartup()
         glUniform1i(kUniformTime, t);
         glRecti(-1, -1, 1, 1);
 
+        // Supperpose the text
         glUseProgram(gShaderTex);
         glUniform4f(
             kUniformResolution,
@@ -322,43 +514,8 @@ int __stdcall WinMainCRTStartup()
         glBindTexture(GL_TEXTURE_2D, sdfTex);
         glRecti(-1, -1, 1, 1);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, fbTextSDF);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glColor3ubv((const GLubyte *)&white);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        for (int i = 0; i < 11; ++i)
-        {
-            glPushAttrib(GL_LIST_BIT);
-            glListBase(0);
-            glPushMatrix();
-            float xPos = (float)(i % 15);
-            float yPos = (float)(i / 15);
-            glRasterPos2f(-1.0 + unitX32 * (i % maxUnitWidth), -1.0 + (FONT_BOTTOM_COMPENSATION) + unitY32 * (i / maxUnitWidth));
-            glCallLists(1, GL_UNSIGNED_BYTE, &dummyText[i]);
-            glPopMatrix();
-            glPopAttrib();
-        }
-
-        glBindTexture(GL_TEXTURE_2D, sdfTex);
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, kCanvasWidth, kCanvasHeight);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
+        // Post process
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUseProgram(gShaderTex);
-        glUniform4f(
-            0,
-            (float)kCanvasWidth,
-            (float)kCanvasHeight,
-            (float)kCanvasWidth / (float)kCanvasHeight,
-            (float)kCanvasHeight / (float)kCanvasWidth);
-        glUniform1i(kTextSampler, 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, sdfTex);
-        glRecti(-1, -1, 1, 1);
-
         glUseProgram(gShaderPostProcess);
         glUniform4f(
             kUniformResolution,
@@ -374,8 +531,8 @@ int __stdcall WinMainCRTStartup()
 
         SwapBuffers(hDC);
         processMessages();
-        // finished = !(MMTime.u.cb < c);
-    } while (!finished && !GetAsyncKeyState(VK_ESCAPE));
+        dt = timeGetTime() - start;
+    } while (!GetAsyncKeyState(VK_ESCAPE));
 
     CoUninitialize();
     ShowCursor(true);

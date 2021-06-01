@@ -82,12 +82,32 @@ float sdArc( in vec2 p, in vec2 sca, in vec2 scb, in float ra, in float rb )
     return sqrt(max(0.0, dot(p,p) + ra*ra - 2.0*ra*k)) - rb;
 }
 
+float sdSegment( in vec2 p, in vec2 a, in vec2 b )
+{
+    vec2 pa = p-a, ba = b-a;
+    float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+    return length( pa - ba*h );
+}
+
+float sdParallelogram( in vec2 p, float wi, float he, float sk )
+{
+    vec2 e = vec2(sk,he);
+    p = (p.y<0.0)?-p:p;
+    vec2  w = p - e; w.x -= clamp(w.x,-wi,wi);
+    vec2  d = vec2(dot(w,w), -w.y);
+    float s = p.x*e.y - p.y*e.x;
+    p = (s<0.0)?-p:p;
+    vec2  v = p - vec2(wi,0); v -= e*clamp(dot(v,e)/dot(e,e),-1.0,1.0);
+    d = min( d, vec2(dot(v,v), wi*he-abs(s)));
+    return sqrt(d.x)*sign(-d.y);
+}
+
 // Compute the position of particle {i} at the time {sec}.
 vec3 calcPos(int i) {
     float fi = float(i);
     float dx = sin((fi/4.0)+sec) + mix(2.0, 0.0, f1(sec-4.0));
-    float dy = sin(2.0*PI*(fi/10.0) + sec) - mix(0.0, sin(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-20.0));
-    float dz = cos(2.0*PI*(fi/10.0) + sec) - mix(0.0, cos(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-20.0));
+    float dy = sin(2.0*PI*(fi/10.0) + sec) - mix(0.0, sin(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-5.0));
+    float dz = cos(2.0*PI*(fi/10.0) + sec) - mix(0.0, cos(2.0*PI*(fi/10.0) + sec), f1(sec/1.5-5.0));
     
     vec3 dir = vec3(dx, dy, dz);
     vec3 p = dir;
@@ -143,7 +163,7 @@ float middleBox(vec3 ray) {
     float rx = 2. - random(vec2(16.0, 5.0)) * 4.0;
     vec3 q = ray;
     q = (rotationMatrix(vec3(rx, yr, zr), sec) * vec4(ray, 1.0)).xyz;
-    return sdBoxFrame(q, vec3(0.2, 0.2, 0.2) * vec3(f1(sec/1.5 - 29.0/1.5)), 0.025);
+    return sdBoxFrame(q, vec3(0.2, 0.2, 0.2) * vec3(f1(sec/1.5 - 5.0/1.5)), 0.025);
 }
 
 // Draw all the particles
@@ -165,7 +185,7 @@ vec3 scene(vec3 ray)
         koi = 1.0;
     }
     
-    if(sec > 25.0 && cube < kde) {
+    if(sec > 5.0 && cube < kde) {
         kde = cube;
         koi = 1.0;
     }
@@ -215,7 +235,7 @@ void main()
     vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy)/iResolution.y;
     
     vec3 target  = vec3(0.0, 0.0, 0.0);
-	vec3 eye     = vec3(2.0, 0.0, 0.0);
+    vec3 eye     = vec3(2.0, 0.0, 0.0);
     vec3 up      = vec3(0.0, 1.0, 0.0);
     
     vec3 eyeDir   = normalize(target - eye);
@@ -241,14 +261,34 @@ void main()
     
     // LOGO
     // left-down circle
-    float d = sdCircle(uv + vec2(0.5, 0.5), 0.1);
+    float d = sdCircle(uv + vec2(0.6, 0.6), 0.05);
     color = mix(color, vec3(1.0), smoothstep(3.0/iResolution.y, 0.0, d));
     
     // left down arc
     float ta = PI/2.0 * sec*2.0;// 3.14*(0.5+0.5*cos(sec*0.52+2.0));
     float tb = PI/4.0 * (1.0-sin(sec)/2.0); //3.14*(0.5+0.5*cos(sec*0.31+2.0));
-    d = sdArc(uv + vec2(0.5, 0.5),vec2(sin(ta),cos(ta)),vec2(sin(tb),cos(tb)), 0.2, 0.02);
+    d = sdArc(uv + vec2(0.6, 0.6),vec2(sin(ta),cos(ta)),vec2(sin(tb),cos(tb)), 0.1, 0.005);
     color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
-
-	gl_FragColor = vec4(color, 1.0);
+    
+    // line top left
+    d = sdSegment(uv, vec2(-2.0, 0.2), vec2(0.25, 0.2));
+    color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
+    
+    // line bottom right
+    d = sdSegment(uv, vec2(-0.25, -0.2), vec2(2.0, -0.2));
+    color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
+    
+    // top roller
+    for(float i=0.0; i<48.0; i+=1.0) {
+      d = sdParallelogram(uv+vec2(mix(-4.0, 4.0, i/48.0)-mod(sec, 1.0), -0.275), 0.05, 0.05, 0.03);
+      color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
+    }
+    
+    // bottom roller
+    for(float i=0.0; i<48.0; i+=1.0) {
+      d = sdParallelogram(uv+vec2(mix(-4.0, 4.0, i/48.0)+mod(sec, 1.0), 0.275), 0.05, 0.05, 0.03);
+      color = mix(color, vec3(1.0), smoothstep(4.0/iResolution.y, 0.0, d));
+    }
+    
+    gl_FragColor = vec4(color, 1.0);
 }

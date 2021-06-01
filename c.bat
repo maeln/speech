@@ -1,4 +1,4 @@
-cl -nologo -Gm- -GR- -EHa- -Oi -GS- -Gs99999999 speech.cpp -link -stack:0x5000000,0x5000000 -subsystem:windows -nodefaultlib "kernel32.lib" "ole32.lib" "winmm.lib" "user32.lib" "gdi32.lib" "opengl32.lib" "glu32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" "song.obj" 
+cl -nologo -GL -O1 -Os -Gm- -GR- -EHa- -Oi -GS- -Gs99999999 speech.cpp -link -stack:0x5000000,0x5000000 -subsystem:windows -nodefaultlib "kernel32.lib" "ole32.lib" "winmm.lib" "user32.lib" "gdi32.lib" "opengl32.lib" "glu32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" "song.obj" 
 
 :: -utf-8 -MD  -Fd"Release\speech.pdb" -Fa"Release\speech.asm" -Fo"Release\speech.obj"
 
